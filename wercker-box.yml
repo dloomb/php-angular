@@ -1,15 +1,246 @@
-name: php-angular
-version: 0.0.1
-inherits: wercker/php
-type: service
-platform: ubuntu@12.04
-description: wercker box for php and angularjs
-keywords:
-  - angularjs
-  - php
+name: php
+version: 2.0.0
+inherits: wercker/ubuntu12.04-webessentials@1.0.4
+type : main
+platform : ubuntu@12.04
+no-response-timeout: 25
+build:
+    steps:
+        - validate-wercker-box
 
-script: |
+description : php
+keywords:
+  - php
+packages :
+  - php@5.4.38
+  - php@5.5.22
+  - php@5.6.6
+script : |
+  # Add eports to profile, rc didn't work
+  echo 'export PATH="/usr/local/bin:$PATH"' >> $HOME/.bash_profile
+
+  # Add repository that contains php packages
+  sudo add-apt-repository ppa:ondrej/php5 -y
   sudo apt-get update
-  sudo apt-get install nodejs
-  sudo apt-get install npm
-  sudo npm install -g karma
+
+  # Needed to build PHP with php-build
+  sudo apt-get build-dep php5-cli
+  sudo apt-get install libreadline-dev
+  sudo apt-get install re2c
+  sudo apt-get install flex
+  sudo apt-get install bison
+
+  # Install php-build
+  git clone https://github.com/CHH/php-build.git
+  sudo ./php-build/install.sh
+  rm -rf ./php-build
+  sudo chown -R ubuntu $HOME
+  sudo chown -R ubuntu /usr/local/share/php-build
+  export PHP_BUILD_CONFIGURE_OPTS="--with-bz2 --enable-intl --enable-calendar"
+  export PHP_BUILD_VERSIONS_DIR="$HOME/.phpenv/versions"
+
+  # Validate php-build
+  php-build --version
+
+  # Intall php-env
+  git clone https://github.com/CHH/phpenv.git
+  sudo ./phpenv/bin/phpenv-install.sh
+  echo 'export PATH="/home/ubuntu/.phpenv/shims:/home/ubuntu/.phpenv/bin:$PATH"' >> $HOME/.bash_profile
+  echo 'eval "$(phpenv init -)"' >> $HOME/.bash_profile
+
+  # Install extensions
+  sudo cp ./phpenv/extensions/rbenv-config-add /home/ubuntu/.phpenv/libexec
+  sudo cp ./phpenv/extensions/rbenv-config-rm /home/ubuntu/.phpenv/libexec
+
+  rm -rf ./phpenv
+  sudo chown -R ubuntu $HOME
+  source $HOME/.bash_profile
+
+  # Validate phpenv
+  phpenv --version
+
+
+  # PHP 5.4
+
+  php-build -i development --pear 5.4.38 $HOME/.phpenv/versions/5.4 --verbose
+  sed -i  's/128M/8096M/' /home/ubuntu/.phpenv/versions/5.4/etc/php.ini
+
+  # Setup environment
+  phpenv rehash
+  phpenv global 5.4
+  prefix=$(phpenv prefix)
+
+  # Download composer
+  curl -sS https://getcomposer.org/installer | php
+  sudo chmod +x ./composer.phar
+  ./composer.phar self-update
+
+  # Install composer
+  sudo cp composer.phar $prefix/bin/composer
+  sudo chmod +x $prefix/bin/composer
+
+  # Install PHPUnit and DBunit
+  pear config-set auto_discover 1
+  wget https://phar.phpunit.de/phpunit.phar
+  chmod +x phpunit.phar
+  sudo mv phpunit.phar $prefix/bin/phpunit
+
+  # Install atoum
+  wget http://downloads.atoum.org/nightly/mageekguy.atoum.phar
+  chmod +x mageekguy.atoum.phar
+  sudo mv mageekguy.atoum.phar $prefix/bin/atoum
+  sudo chmod +x $prefix/bin/atoum
+
+  # PHP 5.5
+
+  php-build -i development --pear 5.5.22 $HOME/.phpenv/versions/5.5 --verbose
+  sed -i  's/128M/8096M/' /home/ubuntu/.phpenv/versions/5.5/etc/php.ini
+
+  # Setup environment
+  phpenv rehash
+  phpenv global 5.5
+  prefix=$(phpenv prefix)
+
+  # Install composer
+  sudo cp composer.phar $prefix/bin/composer
+  sudo chmod +x $prefix/bin/composer
+
+  # Install PHPUnit and DBunit
+  pear config-set auto_discover 1
+  wget https://phar.phpunit.de/phpunit.phar
+  chmod +x phpunit.phar
+  sudo mv phpunit.phar $prefix/bin/phpunit
+
+  # Install atoum
+  wget http://downloads.atoum.org/nightly/mageekguy.atoum.phar
+  chmod +x mageekguy.atoum.phar
+  sudo mv mageekguy.atoum.phar $prefix/bin/atoum
+  sudo chmod +x $prefix/bin/atoum
+
+  # PHP 5.6
+
+  php-build -i development --pear 5.6.6 $HOME/.phpenv/versions/5.6 --verbose
+  sed -i  's/128M/8096M/' /home/ubuntu/.phpenv/versions/5.6/etc/php.ini
+
+  # Setup environment
+  phpenv rehash
+  phpenv global 5.6
+  prefix=$(phpenv prefix)
+
+  # Install composer
+  sudo cp composer.phar $prefix/bin/composer
+  sudo chmod +x $prefix/bin/composer
+
+  # Install PHPUnit and DBunit
+  pear config-set auto_discover 1
+  wget https://phar.phpunit.de/phpunit.phar
+  chmod +x phpunit.phar
+  sudo mv phpunit.phar $prefix/bin/phpunit
+
+  # Install atoum
+  wget http://downloads.atoum.org/nightly/mageekguy.atoum.phar
+  chmod +x mageekguy.atoum.phar
+  sudo mv mageekguy.atoum.phar $prefix/bin/atoum
+  sudo chmod +x $prefix/bin/atoum
+
+  phpenv rehash
+
+default-build:
+  php-composer-phpunit:
+    priority: 150
+    detect:
+      - files:
+          - composer.json
+          - phpunit.xml
+    text-to-append: |
+      build:
+          # The steps that will be executed on build
+          steps:
+            # A custom script step, name value is used in the UI
+            # and the code value contains the command that get executed
+            - script:
+                name: install dependencies
+                code: composer install --no-interaction --prefer-source
+            - script:
+                name: run unit tests
+                code: phpunit
+            # Add more steps here:
+            #- script:
+            #    name: run unit tests
+            #    code: phpunit
+
+  php-phpunit:
+    priority: 125
+    detect:
+      - files:
+        - phpunit.xml
+    text-to-append: |
+      build:
+          # The steps that will be executed on build
+          steps:
+            # A custom script step, name value is used in the UI
+            # and the code value contains the command that get executed
+            #- script:
+            #    name: install dependencies
+            #    code: composer install --no-interaction
+            - script:
+                name: run unit tests
+                code: phpunit
+            # Add more steps here:
+            #- script:
+            #    name: run unit tests
+            #    code: phpunit
+  php-composer:
+    priority: 100
+    detect:
+      - files:
+          - composer.json
+    text-to-append: |
+      build:
+          # The steps that will be executed on build
+          steps:
+            # A custom script step, name value is used in the UI
+            # and the code value contains the command that get executed
+            - script:
+                name: install dependencies
+                code: composer install --no-interaction
+            - script:
+                name: echo php information
+                code: |
+                  echo "php version $(php --version) running"
+                  echo "from location $(which php)"
+            # Add more steps here:
+            #- script:
+            #    name: run unit tests
+            #    code: phpunit
+  php:
+    priority : 50
+    detect:
+      - default: true
+    text-to-append: |
+      # Build definition
+      build:
+        # The steps that will be executed on build
+        steps:
+          # A custom script step, name value is used in the UI
+          # and the code value contains the command that get executed
+          - script:
+              name: echo php information
+              code: |
+                echo "php version $(php --version) running"
+                echo "from location $(which php)"
+          # Add more steps here:
+          #- script:
+          #    name: run unit tests
+          #    code: phpunit
+
+box-detect:
+  priority: 1200
+  version:
+  detect:
+    - files:
+      - composer.json
+    - files:
+      - phpunit.xml
+    - files:
+      - index.php
